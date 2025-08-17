@@ -1,4 +1,32 @@
-# Burp Suite MCP Server Extension
+# Burp Suite MCP Server Extension with scan and crawl features
+## This an extended MCP Server Extension for BurpSuite proxy with scan and crawl based on the original. 
+## For Building instructions follow below the original README as provided from PortSwigger, for direct use, load the extension provided on your Burp proxy.
+
+Load the jar file as Java extension.
+<img width="1173" height="679" alt="Screenshot 2025-08-17 at 12 33 04" src="https://github.com/user-attachments/assets/ee02a238-e77b-4d4a-9e17-654d560c74f8" />
+Require approval it's up to you, as it will give you a prompt each time is used.
+<img width="1510" height="812" alt="Screenshot 2025-08-17 at 12 35 52" src="https://github.com/user-attachments/assets/67ad35a7-a63e-40df-ac82-ebbc6651ef97" />
+
+The following is a sample for Cursor
+```
+{
+  "mcpServers": {
+    "burp": {
+      "url": "http://localhost:9876/sse"
+    }
+  }
+}
+```
+<img width="818" height="630" alt="Screenshot 2025-08-17 at 12 37 15" src="https://github.com/user-attachments/assets/72aa8abe-378b-4f8a-8ec3-febd8ff374fb" />
+
+Sample content
+<img width="1292" height="881" alt="Screenshot 2025-08-17 at 12 38 13" src="https://github.com/user-attachments/assets/71f0a38f-edc7-41f6-83fa-f5d47ab7c6c3" />
+
+<img width="1283" height="580" alt="Screenshot 2025-08-17 at 12 39 19" src="https://github.com/user-attachments/assets/d2206819-5123-4a19-ad6e-86706b4a87b8" />
+
+Notes: This is meant to be a test/play tool nothing official nothing production.
+
+==== Official readme below ==== 
 
 ## Overview
 
