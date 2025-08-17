@@ -8,6 +8,11 @@ import burp.api.montoya.http.HttpMode
 import burp.api.montoya.http.HttpService
 import burp.api.montoya.http.message.HttpHeader
 import burp.api.montoya.http.message.requests.HttpRequest
+import burp.api.montoya.scanner.AuditConfiguration
+import burp.api.montoya.scanner.BuiltInAuditConfiguration
+import burp.api.montoya.scanner.ReportFormat
+import burp.api.montoya.scanner.ScanTask
+import burp.api.montoya.scanner.audit.Audit
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
@@ -187,6 +192,84 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
         mcpPaginatedTool<GetScannerIssues>("Displays information about issues identified by the scanner") {
             api.siteMap().issues().asSequence().map { Json.encodeToString(it.toSerializableForm()) }
         }
+
+        // Scanner/Audit/Crawl tools
+        mcpTool<StartAudit>("Starts a Burp Scanner audit using a built-in configuration") {
+            val cfg = AuditConfiguration.auditConfiguration(
+                BuiltInAuditConfiguration.valueOf(builtInConfiguration)
+            )
+            val audit = api.scanner().startAudit(cfg)
+            val id = ScannerTaskRegistry.put(audit)
+            "Started audit: id=$id status=${audit.statusMessage()}"
+        }
+
+        mcpTool<StartAuditWithRequests>("Starts an audit and adds provided HTTP requests to it") {
+            val cfg = AuditConfiguration.auditConfiguration(
+                BuiltInAuditConfiguration.valueOf(builtInConfiguration)
+            )
+            val audit = api.scanner().startAudit(cfg)
+            val service = toMontoyaService()
+
+            for (raw in requests) {
+                val allowed = runBlocking {
+                    HttpRequestSecurity.checkHttpRequestPermission(targetHostname, targetPort, config, raw, api)
+                }
+                if (!allowed) {
+                    api.logging().logToOutput("MCP audit request denied: $targetHostname:$targetPort")
+                    continue
+                }
+                val fixed = raw.replace("\r", "").replace("\n", "\r\n")
+                val req = HttpRequest.httpRequest(service, fixed)
+                audit.addRequest(req)
+            }
+
+            val id = ScannerTaskRegistry.put(audit)
+            "Started audit with requests: id=$id status=${audit.statusMessage()}"
+        }
+
+        mcpTool<StartCrawl>("Starts a Burp Scanner crawl with seed URLs") {
+            val crawl = api.scanner().startCrawl(
+                burp.api.montoya.scanner.CrawlConfiguration.crawlConfiguration(*seedUrls.toTypedArray())
+            )
+            val id = ScannerTaskRegistry.put(crawl)
+            "Started crawl: id=$id status=${crawl.statusMessage()}"
+        }
+
+        mcpTool<GetScanTaskStatus>("Gets status for a crawl/audit task started via MCP") {
+            val task = ScannerTaskRegistry.get(taskId) ?: return@mcpTool "Task not found: $taskId"
+            val base = "status=${task.statusMessage()} requests=${task.requestCount()} errors=${task.errorCount()}"
+            val audit = (task as? Audit)
+            if (audit != null) {
+                val count = audit.issues().size
+                "$base issues=$count"
+            } else {
+                base
+            }
+        }
+
+        mcpTool<DeleteScanTask>("Deletes a crawl/audit task started via MCP") {
+            val task = ScannerTaskRegistry.remove(taskId) ?: return@mcpTool "Task not found: $taskId"
+            task.delete()
+            "Deleted task: $taskId"
+        }
+
+        mcpTool<GenerateScannerReport>("Generates a scanner report for a task or all issues to a path") {
+            val formatEnum = ReportFormat.valueOf(format)
+            val pathObj = java.nio.file.Path.of(path)
+
+            val issues = when {
+                taskId != null -> {
+                    val task = ScannerTaskRegistry.get(taskId)
+                    val audit = task as? Audit ?: return@mcpTool "Task not found or not an audit: $taskId"
+                    audit.issues()
+                }
+                allIssues -> api.siteMap().issues()
+                else -> return@mcpTool "Provide taskId or set allIssues=true"
+            }
+
+            api.scanner().generateReport(issues, formatEnum, pathObj)
+            "Report generated: $path"
+        }
     }
 
     mcpPaginatedTool<GetProxyHttpHistory>("Displays items within the proxy HTTP history") {
@@ -362,6 +445,35 @@ data class SetActiveEditorContents(val text: String)
 
 @Serializable
 data class GetScannerIssues(override val count: Int, override val offset: Int) : Paginated
+
+@Serializable
+data class StartAudit(val builtInConfiguration: String)
+
+@Serializable
+data class StartAuditWithRequests(
+    val builtInConfiguration: String,
+    val requests: List<String>,
+    override val targetHostname: String,
+    override val targetPort: Int,
+    override val usesHttps: Boolean
+) : HttpServiceParams
+
+@Serializable
+data class StartCrawl(val seedUrls: List<String>)
+
+@Serializable
+data class GetScanTaskStatus(val taskId: String)
+
+@Serializable
+data class DeleteScanTask(val taskId: String)
+
+@Serializable
+data class GenerateScannerReport(
+    val taskId: String?,
+    val allIssues: Boolean,
+    val format: String,
+    val path: String
+)
 
 @Serializable
 data class GetProxyHttpHistory(override val count: Int, override val offset: Int) : Paginated
